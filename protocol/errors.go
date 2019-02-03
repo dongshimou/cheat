@@ -9,25 +9,28 @@ const (
 	SuccessCode = 0
 	SuccessStr  = "成功"
 
+	ErrUnDefineErrorCode = 99999
+
 	ErrNotFoundUserCode = 10001
 	ErrNotFoundUserStr  = "没有这个用户"
 
 	ErrWrongPasswordCode = 10002
 	ErrWrongPasswordStr  = "密码错误"
 
+	ErrRoomNotExistCode = 30001
+	ErrRoomNotExistStr  = "房间不存在"
 
-	ErrPlayerUnknowStatusCode =40001
-	ErrPlayerUnknowStatusStr  ="该玩家状态异常"
+	ErrPlayerUnknowStatusCode = 40001
+	ErrPlayerUnknowStatusStr  = "该玩家状态异常"
 
 	ErrPlayerLosedCode = 40002
-	ErrPlayerLosedStr="该玩家已经输了"
+	ErrPlayerLosedStr  = "该玩家已经输了"
 
-	ErrPlayerExitedCode=40003
-	ErrPlayerExitedStr="该玩家已经退出"
+	ErrPlayerExitedCode = 40003
+	ErrPlayerExitedStr  = "该玩家已经退出"
 
 	ErrPlayerCmdRejectCode = 40004
-	ErrPlayerCmdRejectStr = "当前不能操作"
-
+	ErrPlayerCmdRejectStr  = "当前不能操作"
 )
 
 var errMap = map[int]string{}
@@ -40,7 +43,6 @@ func init() {
 	errMap[ErrPlayerLosedCode] = ErrPlayerLosedStr
 	errMap[ErrPlayerExitedCode] = ErrPlayerExitedStr
 	errMap[ErrPlayerCmdRejectCode] = ErrPlayerCmdRejectStr
-
 
 }
 

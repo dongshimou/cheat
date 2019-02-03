@@ -14,7 +14,7 @@ var upgrader = websocket.Upgrader{
 	},
 }
 
-func Test (c *gin.Context) {
+func Test(c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {
@@ -27,7 +27,7 @@ func Test (c *gin.Context) {
 
 }
 
-func Cheat3(c *gin.Context){
+func Cheat3(c *gin.Context) {
 
 	conn, err := upgrader.Upgrade(c.Writer, c.Request, nil)
 	if err != nil {

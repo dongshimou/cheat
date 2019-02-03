@@ -5,31 +5,35 @@ import (
 )
 
 type SignCmd int
-const(
+
+const (
 	SC_Nil SignCmd = iota
 
-	SC_Login //登录
+	SC_Login  //登录
 	SC_Logout //退出
 
-	SC_Signin //注册
+	SC_Signin  //注册
 	SC_Signout //注销
 
 )
+
 type SignRequest struct {
-	Type SignCmd
+	Type     SignCmd
 	Username string
 	Password string
 	Email    string
 }
 
 type ChatCmd int
-const(
-	CC_Nil ChatCmd=iota
+
+const (
+	CC_Nil ChatCmd = iota
 
 	CC_Private //私聊
-	CC_Room //房间内
-	CC_Server //全服
+	CC_Room    //房间内
+	CC_Server  //全服
 )
+
 type ChatRequest struct {
 	Type ChatCmd
 
@@ -39,24 +43,44 @@ type ChatRequest struct {
 }
 
 type RoomCmd int
-const(
 
+const (
 	RC_Nil RoomCmd = iota
 	RC_Join
 	RC_Create
 	RC_QuickJoin
+	RC_List
 	RC_Exit
-
 )
+
 type RoomRequest struct {
-
 	Type RoomCmd
-
 	//加入的时候需要id
 	RoomId int64
-
 }
 
+type RoomResponse struct {
+	Type RoomCmd
+	Data interface{}
+}
+
+type RoomResListSingle struct {
+	Id          int64
+	Name        string
+	PlayerCount int
+	NeedPass    bool
+}
+type RoomResCreate struct {
+	Id          int64
+	Name        string
+	PlayerCount int
+	Password    string
+}
+
+type ErrorResponse struct {
+	Code int
+	Msg  string
+}
 
 type UserPlayCmd int
 
@@ -92,8 +116,8 @@ type PlayRequest struct {
 	LoserId int64
 }
 
-
 type EventType int32
+
 const (
 	//错误
 	UC_ErrCmd EventType = iota

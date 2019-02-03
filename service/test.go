@@ -39,6 +39,20 @@ func Test(conn *websocket.Conn) {
 
 }
 
+type UserManager struct {
+	sync.Map
+}
+func (m* UserManager)GetUser(uid int64)(ctx *UserContext,err error){
+
+
+	return ctx,nil
+}
+func (m*UserManager)AddUser(user *model.User)(ctx *UserContext,err error){
+
+	return ctx,nil
+}
+
+
 var UserMap sync.Map
 
 type UserContext struct {
@@ -47,10 +61,22 @@ type UserContext struct {
 	RecvChanMap map[protocol.EventType]chan []byte
 	SendChanMap map[protocol.EventType]chan []byte
 
-	RoomId  int64
+	RoomId int64
 }
 
-func (u *UserContext)processRoomMsg(rcmd *protocol.RoomRequest) {
+var RoomManager sync.Map
+
+func (u *UserContext) joinRoom(room *GameRoom) {
+
+}
+func (u *UserContext) exitRoom(room *GameRoom) {
+
+}
+func CreateRoom() *GameRoom {
+
+	return nil
+}
+func (u *UserContext) processRoomMsg(rcmd *protocol.RoomRequest) {
 
 	switch rcmd.Type {
 
@@ -59,80 +85,128 @@ func (u *UserContext)processRoomMsg(rcmd *protocol.RoomRequest) {
 
 	case protocol.RC_Create:
 		{
-
+			rm := CreateRoom()
+			rrc := protocol.RoomResCreate{
+				Id:          rm.Id,
+				Name:        rm.Name,
+				Password:    rm.Pass,
+				PlayerCount: len(rm.Player),
+			}
+			res := &protocol.RoomResponse{
+				Type: protocol.RC_Create,
+				Data: rrc,
+			}
+			u.SendRoomMsg(res)
 		}
 	case protocol.RC_Join:
 		{
-
+			room, exist := RoomManager.Load(rcmd.RoomId)
+			if !exist {
+				u.SendError(protocol.NewErr(protocol.ErrRoomNotExistCode))
+				return
+			}
+			gr, ok := room.(*GameRoom)
+			if !ok {
+				logger.Error("room not exist!")
+				return
+			}
+			u.joinRoom(gr)
 		}
 	case protocol.RC_QuickJoin:
 		{
 
 		}
+	case protocol.RC_List:
+		{
+			list := []protocol.RoomResListSingle{}
+			RoomManager.Range(func(key, value interface{}) bool {
+				tmp := protocol.RoomResListSingle{}
+				list = append(list, tmp)
+				return true
+			})
+			res := &protocol.RoomResponse{
+				Type: protocol.RC_List,
+				Data: list,
+			}
+			u.SendRoomMsg(res)
+		}
 	case protocol.RC_Exit:
 		{
-
+			//玩家不在房价 退出的房间号有问题 退出的房间号不等于玩家所在房价
+			if u.RoomId == 0 || rcmd.RoomId == 0 || rcmd.RoomId != u.RoomId {
+				return
+			}
+			room, exist := RoomManager.Load(rcmd.RoomId)
+			if !exist {
+				u.SendError(protocol.NewErr(protocol.ErrRoomNotExistCode))
+				return
+			}
+			gr, ok := room.(*GameRoom)
+			if !ok {
+				logger.Error("room not exist!")
+				return
+			}
+			u.exitRoom(gr)
 		}
 	}
 }
-func (u *UserContext)processPlayMsg(rcmd *protocol.PlayRequest) {
-	//玩家不在房价
-	if u.RoomId==0{
-		return
-	}
+func (u *UserContext) processPlayMsg(rcmd *protocol.PlayRequest) {
 
 }
-func (u *UserContext)processSignMsg(rcmd *protocol.SignRequest){
+func (u *UserContext) processSignMsg(rcmd *protocol.SignRequest) {
 
 }
-
-func (u *UserContext)processChatMsg(rcmd *protocol.ChatRequest){
+func (u *UserContext) processChatMsg(rcmd *protocol.ChatRequest) {
 
 }
 
 func (u *UserContext) ProcessMsg() {
 
-	for{
+	for {
 
 		select {
 
-		case rmsg:=<-u.RecvChanMap[protocol.UC_RoomCmd]:{
-			rcmd:=&protocol.RoomRequest{}
-			if err:=json.Unmarshal(rmsg,rcmd);err!=nil{
-				logger.Warnning(err)
-				continue
+		case rmsg := <-u.RecvChanMap[protocol.UC_RoomCmd]:
+			{
+				rcmd := &protocol.RoomRequest{}
+				if err := json.Unmarshal(rmsg, rcmd); err != nil {
+					logger.Warnning(err)
+					continue
+				}
+				u.processRoomMsg(rcmd)
 			}
-			u.processRoomMsg(rcmd)
-		}
 
-		case rmsg := <-u.RecvChanMap[protocol.UC_PlayCmd]:{
+		case rmsg := <-u.RecvChanMap[protocol.UC_PlayCmd]:
+			{
 
-			rcmd:=&protocol.PlayRequest{}
-			if err:=json.Unmarshal(rmsg,rcmd);err!=nil{
-				logger.Warnning(err)
-				continue
+				rcmd := &protocol.PlayRequest{}
+				if err := json.Unmarshal(rmsg, rcmd); err != nil {
+					logger.Warnning(err)
+					continue
+				}
+				u.processPlayMsg(rcmd)
+
 			}
-			u.processPlayMsg(rcmd)
 
-		}
-
-		case rmsg := <-u.RecvChanMap[protocol.UC_ChatCmd]:{
-			rcmd:=&protocol.ChatRequest{}
-			if err:=json.Unmarshal(rmsg,rcmd);err!=nil{
-				logger.Warnning(err)
-				continue
+		case rmsg := <-u.RecvChanMap[protocol.UC_ChatCmd]:
+			{
+				rcmd := &protocol.ChatRequest{}
+				if err := json.Unmarshal(rmsg, rcmd); err != nil {
+					logger.Warnning(err)
+					continue
+				}
+				u.processChatMsg(rcmd)
 			}
-			u.processChatMsg(rcmd)
-		}
 
-		case rmsg := <-u.RecvChanMap[protocol.UC_SignCmd]:{
-			rcmd:=&protocol.SignRequest{}
-			if err:=json.Unmarshal(rmsg,rcmd);err!=nil{
-				logger.Warnning(err)
-				continue
+		case rmsg := <-u.RecvChanMap[protocol.UC_SignCmd]:
+			{
+				rcmd := &protocol.SignRequest{}
+				if err := json.Unmarshal(rmsg, rcmd); err != nil {
+					logger.Warnning(err)
+					continue
+				}
+				u.processSignMsg(rcmd)
 			}
-			u.processSignMsg(rcmd)
-		}
 
 		}
 
@@ -141,15 +215,31 @@ func (u *UserContext) ProcessMsg() {
 func (u *UserContext) SendPlayMsg(data []byte) {
 	u.SendChanMap[protocol.UC_PlayCmd] <- data
 }
-func (u *UserContext)SendNotifyMsg(err error){
-	u.SendChanMap[protocol.UC_NotifyCmd]<-[]byte(err.Error())
+func (u *UserContext) SendNotifyMsg(data []byte) {
+	u.SendChanMap[protocol.UC_NotifyCmd] <- data
+}
+func (u *UserContext) SendRoomMsg(res *protocol.RoomResponse) {
+	jstr, _ := json.Marshal(res)
+	u.SendChanMap[protocol.UC_RoomCmd] <- jstr
+}
+func (u *UserContext) SendError(err error) {
+	code := protocol.ErrUnDefineErrorCode
+	if ie, ok := err.(protocol.InnerError); ok {
+		code = ie.Code
+	}
+	er := &protocol.ErrorResponse{
+		Code: code,
+		Msg:  err.Error(),
+	}
+	jstr, _ := json.Marshal(er)
+	u.SendChanMap[protocol.UC_ErrCmd] <- jstr
 }
 func (u *UserContext) ExitRoom() {
-	pe:= protocol.PlayRequest{
+	pe := protocol.PlayRequest{
 		PlayCmd: protocol.UPC_Exit,
 	}
-	jstr,_:=json.Marshal(pe)
-	u.RecvChanMap[protocol.UC_PlayCmd]<- jstr
+	jstr, _ := json.Marshal(pe)
+	u.RecvChanMap[protocol.UC_PlayCmd] <- jstr
 	u.RoomId = 0
 }
 
@@ -175,7 +265,6 @@ type RoomPlayer struct {
 	Watch  bool
 	Plate  *plate.ThreePlate
 }
-
 
 type ServerMsg struct {
 	//通知给玩家的状态
@@ -726,7 +815,7 @@ func joinUser(uid int64, conn *websocket.Conn) {
 			case protocol.UC_PlayCmd:
 				user.RecvChanMap[protocol.UC_PlayCmd] <- req.Data
 			case protocol.UC_NotifyCmd:
-				user.RecvChanMap[protocol.UC_NotifyCmd]<-req.Data
+				user.RecvChanMap[protocol.UC_NotifyCmd] <- req.Data
 			}
 		}
 	}()
@@ -735,6 +824,12 @@ func joinUser(uid int64, conn *websocket.Conn) {
 		for {
 			res := &protocol.WsResponse{}
 			select {
+
+			case data := <-user.SendChanMap[protocol.UC_ErrCmd]:
+				{
+					res.Type = protocol.UC_ErrCmd
+					res.Data = data
+				}
 			case data := <-user.SendChanMap[protocol.UC_SignCmd]:
 				{
 					res.Type = protocol.UC_SignCmd
@@ -750,10 +845,11 @@ func joinUser(uid int64, conn *websocket.Conn) {
 					res.Type = protocol.UC_PlayCmd
 					res.Data = data
 				}
-			case data:=<-user.SendChanMap[protocol.UC_NotifyCmd]:{
-				res.Type =protocol.UC_NotifyCmd
-				res.Data=data
-			}
+			case data := <-user.SendChanMap[protocol.UC_NotifyCmd]:
+				{
+					res.Type = protocol.UC_NotifyCmd
+					res.Data = data
+				}
 
 			}
 		}
