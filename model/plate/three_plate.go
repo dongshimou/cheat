@@ -10,6 +10,8 @@ type Compare interface {
 
 type ThreePlateLevel int
 const (
+	plate_Joker2=16
+	plate_Joker1=15
 	plate_A  = 14
 	plate_K  = 13
 	plate_Q  = 12
@@ -24,19 +26,29 @@ const (
 	plate_3  = 3
 	plate_2  = 2
 
-	plate_Single    = 1
-	plate_Double    = 1000
-	plate_Order      = 100000
-	plate_Equal     = 1000000
-	plate_OrderEqual = 1000000000
-	plate_Three      = 10000000000
+	plate_Single     = 1
+	Value_Double     = 1000
+	Value_Order      = 100000
+	Value_Equal      = 1000000
+	Value_OrderEqual = 1000000000
+	Value_Three      = 10000000000
 
-	PlateSingle ThreePlateLevel = iota
-	PlateDouble
-	PlateOrder
-	PlateEqual
-	PlateOrderEqual
-	PlateThree
+	/*
+
+	三同占用一位(数字)
+	顺金占用一位(最大的数字)
+	金花占用三位(三个不同的数字)
+	顺子占用一位(最大的数字)
+	对子占用两位(对子的数字和单牌的数字)
+	单排占用三位(三个不同的数字)
+
+	 */
+	Level_Single ThreePlateLevel = iota
+	Level_Double
+	Level_Order
+	Level_Equal
+	Level_OrderEqual
+	Level_Three
 )
 
 func NewPlate(a,b,c int)*ThreePlate {
@@ -52,7 +64,7 @@ func (p *ThreePlate) hash(){
 	sort.Slice(p.Plate, func(i, j int) bool {
 		return p.Plate[i]< p.Plate[j]
 	})
-	//大小
+	//数字
 	a0:= p.Plate[0]%100
 	a1:= p.Plate[1]%100
 	a2:= p.Plate[2]%100
@@ -65,21 +77,25 @@ func (p *ThreePlate) hash(){
 		return a2*100+a1*10+a0
 	}
 	is_double:= func() int {
+		//对比单牌大
 		if a2 == a1 {
 			return a2*10 + a0
 		}
+		//对比单牌小
 		if a1 == a0 {
 			return a1*10 + a2
 		}
 		return 0
 	}
 	is_three:= func() int{
+		//三个数字一样的
 		if a0==a1&&a1==a2{
 			return a2
 		}
 		return 0
 	}
 	is_equal:= func() int{
+		//花色一样的
 		if b0==b1&&b1==b2{
 			return is_single()
 		}
@@ -87,14 +103,17 @@ func (p *ThreePlate) hash(){
 	}
 	is_order:= func() int{
 		if a2==plate_A{
+			//123
 			if a0==plate_2&&a1==plate_3{
 				return a1
 			}
+			//QKA
 			if a0==plate_Q&&a1==plate_K{
 				return a2
 			}
 			return 0
 		}else{
+			//234 JQK
 			if a0+1!=a1||a1+1!=a2{
 				return a2
 			}
@@ -104,37 +123,37 @@ func (p *ThreePlate) hash(){
 
 	three:=is_three()
 	if three>0{
-		p.Value=three*plate_Three
-		p.Level=PlateThree
+		p.Value=three* Value_Three
+		p.Level= Level_Three
 		return
 	}
 	order:=is_order()
 	equal:=is_equal()
 	if equal>0{
 		if order>0{
-			p.Value=order*plate_OrderEqual
-			p.Level=PlateOrderEqual
+			p.Value=order* Value_OrderEqual
+			p.Level= Level_OrderEqual
 
 			return
 		}else{
-			p.Value=equal*plate_Equal
-			p.Level=PlateEqual
+			p.Value=equal* Value_Equal
+			p.Level= Level_Equal
 			return
 		}
 	}
 	if order>0{
-		p.Value=order*plate_Order
-		p.Level=PlateOrder
+		p.Value=order* Value_Order
+		p.Level= Level_Order
 		return
 	}
 	double:=is_double()
 	if double>0{
-		p.Value=double*plate_Double
-		p.Level=PlateDouble
+		p.Value=double* Value_Double
+		p.Level= Level_Double
 		return
 	}
 	p.Value=is_single()
-	p.Level=PlateSingle
+	p.Level= Level_Single
 	return
 }
 
@@ -156,5 +175,5 @@ func (p *ThreePlate) Less(v interface{}) bool {
 	if !ok {
 		return false
 	}
-	return p.Value<other.Value
+	return p.Value<=other.Value
 }

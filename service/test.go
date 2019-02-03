@@ -47,97 +47,145 @@ type UserContext struct {
 	RecvChanMap map[protocol.EventType]chan []byte
 	SendChanMap map[protocol.EventType]chan []byte
 
-	CmdChan chan int64
 	RoomId  int64
 }
 
-func (u *UserContext) JoinRoom(rid int64) {
-	u.RoomId = rid
+func (u *UserContext)processRoomMsg(rcmd *protocol.RoomRequest) {
+
+	switch rcmd.Type {
+
+	case protocol.RC_Nil:
+		return
+
+	case protocol.RC_Create:
+		{
+
+		}
+	case protocol.RC_Join:
+		{
+
+		}
+	case protocol.RC_QuickJoin:
+		{
+
+		}
+	case protocol.RC_Exit:
+		{
+
+		}
+	}
+}
+func (u *UserContext)processPlayMsg(rcmd *protocol.PlayRequest) {
+	//玩家不在房价
+	if u.RoomId==0{
+		return
+	}
+
+}
+func (u *UserContext)processSignMsg(rcmd *protocol.SignRequest){
+
+}
+
+func (u *UserContext)processChatMsg(rcmd *protocol.ChatRequest){
+
+}
+
+func (u *UserContext) ProcessMsg() {
+
+	for{
+
+		select {
+
+		case rmsg:=<-u.RecvChanMap[protocol.UC_RoomCmd]:{
+			rcmd:=&protocol.RoomRequest{}
+			if err:=json.Unmarshal(rmsg,rcmd);err!=nil{
+				logger.Warnning(err)
+				continue
+			}
+			u.processRoomMsg(rcmd)
+		}
+
+		case rmsg := <-u.RecvChanMap[protocol.UC_PlayCmd]:{
+
+			rcmd:=&protocol.PlayRequest{}
+			if err:=json.Unmarshal(rmsg,rcmd);err!=nil{
+				logger.Warnning(err)
+				continue
+			}
+			u.processPlayMsg(rcmd)
+
+		}
+
+		case rmsg := <-u.RecvChanMap[protocol.UC_ChatCmd]:{
+			rcmd:=&protocol.ChatRequest{}
+			if err:=json.Unmarshal(rmsg,rcmd);err!=nil{
+				logger.Warnning(err)
+				continue
+			}
+			u.processChatMsg(rcmd)
+		}
+
+		case rmsg := <-u.RecvChanMap[protocol.UC_SignCmd]:{
+			rcmd:=&protocol.SignRequest{}
+			if err:=json.Unmarshal(rmsg,rcmd);err!=nil{
+				logger.Warnning(err)
+				continue
+			}
+			u.processSignMsg(rcmd)
+		}
+
+		}
+
+	}
 }
 func (u *UserContext) SendPlayMsg(data []byte) {
 	u.SendChanMap[protocol.UC_PlayCmd] <- data
 }
+func (u *UserContext)SendNotifyMsg(err error){
+	u.SendChanMap[protocol.UC_NotifyCmd]<-[]byte(err.Error())
+}
 func (u *UserContext) ExitRoom() {
-	u.CmdChan <- u.RoomId
+	pe:= protocol.PlayRequest{
+		PlayCmd: protocol.UPC_Exit,
+	}
+	jstr,_:=json.Marshal(pe)
+	u.RecvChanMap[protocol.UC_PlayCmd]<- jstr
 	u.RoomId = 0
 }
 
-
-
-type UserPlayStatus int
+type PlayStatus int
 
 const (
-	UPS_Error      = iota
-	UPS_Ready      //准备
-	UPS_Wait_Plate //等待发牌
-	UPS_Current    //轮到
-	UPS_Wait_Cheat //等待下注
-	UPS_Win_All    //赢了
-	UPS_Lost       //输了
-	UPS_Exit       //离开
-	UPS_Warning    //警告
-
-	UPS_Close //房间关闭
-)
-
-type UserWatchStatus int
-
-const (
-	UWS_Open = iota
-	UWS_Close
+	PS_Error      = iota
+	PS_Ready      //准备
+	PS_Wait_Plate //等待发牌
+	PS_Current    //轮到
+	PS_Wait_Cheat //等待下注
+	PS_Win_All    //赢了
+	PS_Lost       //输了
+	PS_Exit       //离开
+	PS_Warning    //警告
+	PS_Close      //房间关闭
 )
 
 type RoomPlayer struct {
 	Id     int64
 	Amount uint64
-	Status UserPlayStatus
-	Watch  UserWatchStatus
+	Status PlayStatus
+	Watch  bool
 	Plate  *plate.ThreePlate
 }
 
-type UserPlayCmd int
-
-const (
-	UPC_Error = iota
-	UPC_Ready
-	UPC_Watch
-	UPC_Cheat
-	UPC_Check
-	UPC_Throw
-	UPC_Exit
-)
-
-type PlayerEvent struct {
-	PlayCmd UserPlayCmd
-
-	//玩家
-	PlayerId int64
-
-	//投注额
-	Amount uint64
-
-	//是否已看牌
-	Watch UserWatchStatus
-
-	//投注价值
-	Volume uint64
-
-	//是否查人
-	CheckId int64
-
-	//是否有人输了
-	LoserId int64
-}
 
 type ServerMsg struct {
 	//通知给玩家的状态
-	PlayStatus UserPlayStatus
+	Status PlayStatus
 
 	//这人的id
 	PlayerId int64
 
 	//事件
-	Event PlayerEvent
+	Event protocol.PlayRequest
 
 	//需要通知的错误
 	ErrStr string
@@ -174,7 +222,7 @@ type GameRoom struct {
 	TablePlayer queue.Queue
 
 	//用户命令的管道map
-	PlayerChan chan *PlayerEvent
+	PlayerChan chan *protocol.PlayRequest
 	ServerChan chan *ServerMsg
 
 	closeChanSend chan bool
@@ -198,7 +246,7 @@ func (gr *GameRoom) sendSmsg(msg *ServerMsg) {
 	gr.ServerChan <- msg
 }
 
-func (gr *GameRoom) recvCmsg() *PlayerEvent {
+func (gr *GameRoom) recvCmsg() *protocol.PlayRequest {
 	return <-gr.PlayerChan
 }
 
@@ -210,9 +258,13 @@ func (gr *GameRoom) recvUid(uid int64) {
 	}
 	for {
 		jstr := <-ctx.RecvChanMap[protocol.UC_PlayCmd]
-		event := PlayerEvent{}
+		event := protocol.PlayRequest{}
 		if err := json.Unmarshal(jstr, &event); err != nil {
 			logger.Warnning(err)
+			continue
+		}
+		if event.PlayCmd == protocol.UPC_Error {
+			//未知的指令
 			continue
 		}
 		//检查发送过来的消息是否正确
@@ -221,10 +273,7 @@ func (gr *GameRoom) recvUid(uid int64) {
 		event.Watch = gr.Player[uid].Watch
 		//额度是否在限制内
 		//event.Amount
-		if event.PlayCmd == UPC_Error {
-			//未知的指令
-			continue
-		}
+
 		//查人是否在房间内
 		if event.CheckId != 0 {
 			if _, exist := gr.Player[event.CheckId]; !exist {
@@ -233,7 +282,7 @@ func (gr *GameRoom) recvUid(uid int64) {
 			}
 		}
 
-		if event.PlayCmd == UPC_Exit {
+		if event.PlayCmd == protocol.UPC_Exit {
 			//房间不再接收这人的消息
 			gr.PlayerChan <- &event
 			return
@@ -251,7 +300,7 @@ func (gr *GameRoom) recvUid(uid int64) {
 		gr.PlayerChan <- &event
 	}
 }
-func (gr *GameRoom) sendUids() {
+func (gr *GameRoom) sendRoomPlayers() {
 	for {
 		select {
 		case <-gr.closeChanSend:
@@ -286,7 +335,7 @@ func (gr *GameRoom) Close() {
 
 	gr.closeChanSend <- true
 	gr.sendSmsg(&ServerMsg{
-		PlayStatus: UPS_Close,
+		Status: PS_Close,
 	})
 	for _, p := range gr.Player {
 		if player, exist := getUser(p.Id); exist {
@@ -307,14 +356,14 @@ func (gr *GameRoom) IsLock() bool {
 func (gr *GameRoom) checkExit() {
 	//检查是否有退出的玩家,有就移除
 	for _, p := range gr.Player {
-		if p.Status == UPS_Exit {
+		if p.Status == PS_Exit {
 			delete(gr.Player, p.Id)
 		}
 	}
 }
 
 func (gr *GameRoom) play() {
-	chect_func := func(msg *PlayerEvent, u *RoomPlayer) error {
+	chect_func := func(msg *protocol.PlayRequest, u *RoomPlayer) error {
 		//检查余额
 		if msg.Amount > u.Amount {
 			//没钱了
@@ -322,7 +371,7 @@ func (gr *GameRoom) play() {
 		//检查金额
 
 		//不看牌
-		if u.Watch == UWS_Close {
+		if u.Watch == false {
 			if msg.Amount*2 < gr.CurVol {
 				//太小了
 			}
@@ -335,7 +384,7 @@ func (gr *GameRoom) play() {
 		u.Amount -= msg.Amount
 
 		tmpv := msg.Amount
-		if u.Watch == UWS_Close {
+		if u.Watch == false {
 			tmpv = msg.Amount * 2
 		}
 		if tmpv < gr.CurVol {
@@ -348,7 +397,7 @@ func (gr *GameRoom) play() {
 		//下注成功
 		return nil
 	}
-	check_func := func(msg *PlayerEvent, u *RoomPlayer) error {
+	check_func := func(msg *protocol.PlayRequest, u *RoomPlayer) error {
 
 		if gr.Player[u.Id].Plate.Less(gr.Player[msg.CheckId].Plate) {
 			return errors.New("less")
@@ -358,10 +407,10 @@ func (gr *GameRoom) play() {
 
 	//设置所有人为 等待发牌,未看牌,
 	for _, v := range gr.Player {
-		v.Status = UPS_Ready
-		v.Watch = UWS_Close
+		v.Status = PS_Ready
+		v.Watch = false
 	}
-	gr.sendSmsg(&ServerMsg{PlayStatus: UPS_Ready})
+	gr.sendSmsg(&ServerMsg{Status: PS_Ready})
 	gr.Timer = time.NewTimer(TimeOut)
 	for {
 		select {
@@ -374,19 +423,19 @@ func (gr *GameRoom) play() {
 				if err := func() error {
 					switch event.PlayCmd {
 
-					case UPC_Cheat:
+					case protocol.UPC_Cheat:
 						{
 							if err := chect_func(event, gr.Player[event.PlayerId]); err != nil {
 								return err
 							}
-							gr.Player[event.PlayerId].Status = UPS_Wait_Plate
+							gr.Player[event.PlayerId].Status = PS_Wait_Plate
 							omsg.Event.Amount = event.Amount
 							omsg.Event.Volume = gr.CurVol
 						}
 
-					case UPC_Exit:
+					case protocol.UPC_Exit:
 						{
-							gr.Player[event.PlayerId].Status = UPS_Exit
+							gr.Player[event.PlayerId].Status = PS_Exit
 						}
 					default:
 						{
@@ -395,7 +444,7 @@ func (gr *GameRoom) play() {
 					}
 					return nil
 				}(); err != nil {
-					omsg.PlayStatus = UPS_Warning
+					omsg.Status = PS_Warning
 					omsg.SendId = event.PlayerId
 					gr.sendSmsg(omsg)
 				} else {
@@ -413,7 +462,7 @@ func (gr *GameRoom) play() {
 	}
 
 	for _, p := range gr.Player {
-		if p.Status == UPS_Wait_Plate {
+		if p.Status == PS_Wait_Plate {
 			gr.TablePlayer.PushBack(p.Id)
 		}
 	}
@@ -432,7 +481,7 @@ func (gr *GameRoom) play() {
 		curUser := gr.Player[curUserId]
 
 		//已经输了
-		if curUser.Status == UPS_Lost {
+		if curUser.Status == PS_Lost {
 			continue
 		}
 
@@ -440,8 +489,8 @@ func (gr *GameRoom) play() {
 			//赢了
 
 			gr.sendSmsg(&ServerMsg{
-				PlayStatus: UPS_Win_All,
-				PlayerId:   curUserId,
+				Status:   PS_Win_All,
+				PlayerId: curUserId,
 			})
 			break
 		}
@@ -449,8 +498,8 @@ func (gr *GameRoom) play() {
 
 		//通知所有人 当前用户在干嘛
 		gr.sendSmsg(&ServerMsg{
-			PlayStatus: UPS_Current,
-			PlayerId:   curUserId,
+			Status:   PS_Current,
+			PlayerId: curUserId,
 		})
 
 		if err := func() error {
@@ -465,12 +514,12 @@ func (gr *GameRoom) play() {
 							omsg := &ServerMsg{}
 							omsg.PlayerId = curUserId
 							omsg.Event.PlayCmd = event.PlayCmd
-							omsg.PlayStatus = UPS_Wait_Cheat
+							omsg.Status = PS_Wait_Cheat
 							NeedNext := errors.New("needNext")
 							if err := func() error {
 
 								switch event.PlayCmd {
-								case UPC_Cheat:
+								case protocol.UPC_Cheat:
 									{
 										//押注
 
@@ -482,18 +531,18 @@ func (gr *GameRoom) play() {
 										omsg.Event.Watch = curUser.Watch
 
 									}
-								case UPC_Check:
+								case protocol.UPC_Check:
 									{
 										//查人
 										checkUser := gr.Player[event.CheckId]
 
 										switch checkUser.Status {
-										case UPS_Lost:
+										case PS_Lost:
 											{
 												//查牌的人已经挂了
 												return protocol.NewErr(protocol.ErrPlayerLosedCode)
 											}
-										case UPS_Wait_Plate:
+										case PS_Wait_Plate:
 											{
 												//正常
 
@@ -503,10 +552,10 @@ func (gr *GameRoom) play() {
 												}
 												if err := check_func(event, curUser); err != nil {
 													//比别人小
-													gr.Player[curUserId].Status = UPS_Lost
+													gr.Player[curUserId].Status = PS_Lost
 													omsg.Event.LoserId = curUserId
 												} else {
-													gr.Player[event.CheckId].Status = UPS_Lost
+													gr.Player[event.CheckId].Status = PS_Lost
 													omsg.Event.LoserId = event.CheckId
 												}
 												omsg.Event.CheckId = event.CheckId
@@ -515,7 +564,7 @@ func (gr *GameRoom) play() {
 												omsg.Event.Watch = curUser.Watch
 
 											}
-										case UPS_Exit:
+										case PS_Exit:
 											{
 												return protocol.NewErr(protocol.ErrPlayerExitedCode)
 											}
@@ -527,13 +576,13 @@ func (gr *GameRoom) play() {
 										}
 
 									}
-								case UPC_Watch:
+								case protocol.UPC_Watch:
 									{
 										//看牌
 										watchMsg := &ServerMsg{
-											PlayStatus: UPS_Wait_Cheat,
-											Event: PlayerEvent{
-												PlayCmd: UPC_Watch,
+											Status: PS_Wait_Cheat,
+											Event: protocol.PlayRequest{
+												PlayCmd: protocol.UPC_Watch,
 											},
 											Plate:    curUser.Plate,
 											PlayerId: curUser.Id,
@@ -541,22 +590,22 @@ func (gr *GameRoom) play() {
 										}
 										gr.sendSmsg(watchMsg)
 										//已经看牌
-										gr.Player[curUserId].Watch = UWS_Open
+										gr.Player[curUserId].Watch = true
 
 										//结束
 										return NeedNext
 									}
-								case UPC_Throw:
+								case protocol.UPC_Throw:
 									{
 										//弃牌
-										gr.Player[curUserId].Status = UPS_Lost
-										omsg.PlayStatus = UPS_Lost
+										gr.Player[curUserId].Status = PS_Lost
+										omsg.Status = PS_Lost
 									}
-								case UPC_Exit:
+								case protocol.UPC_Exit:
 									{
 										//退出
-										gr.Player[curUserId].Status = UPS_Exit
-										omsg.PlayStatus = UPS_Exit
+										gr.Player[curUserId].Status = PS_Exit
+										omsg.Status = PS_Exit
 									}
 								default:
 									{
@@ -573,7 +622,7 @@ func (gr *GameRoom) play() {
 									gr.sendSmsg(omsg)
 									continue
 								}
-								omsg.PlayStatus = UPS_Warning
+								omsg.Status = PS_Warning
 								omsg.ErrStr = err.Error()
 								gr.sendSmsg(omsg)
 							} else {
@@ -583,46 +632,46 @@ func (gr *GameRoom) play() {
 						} else {
 							//不是当前人只能看和弃牌和退出
 							switch event.PlayCmd {
-							case UPC_Watch:
+							case protocol.UPC_Watch:
 								{
 									//看牌
 									tuser := gr.Player[event.PlayerId]
 									watchMsg := &ServerMsg{
-										PlayStatus: UPS_Wait_Cheat,
-										Event: PlayerEvent{
-											PlayCmd: UPC_Watch,
+										Status: PS_Wait_Cheat,
+										Event: protocol.PlayRequest{
+											PlayCmd: protocol.UPC_Watch,
 										},
 										Plate:    tuser.Plate,
 										PlayerId: tuser.Id,
 										SendId:   tuser.Id,
 									}
-									tuser.Watch = UWS_Open
+									tuser.Watch = true
 									gr.sendSmsg(watchMsg)
 								}
 
-							case UPC_Throw:
+							case protocol.UPC_Throw:
 								{
-									gr.Player[event.PlayerId].Status = UPS_Lost
+									gr.Player[event.PlayerId].Status = PS_Lost
 									gr.sendSmsg(&ServerMsg{
-										PlayStatus: UPS_Lost,
-										PlayerId:   event.PlayerId,
+										Status:   PS_Lost,
+										PlayerId: event.PlayerId,
 									})
 								}
 
-							case UPC_Exit:
+							case protocol.UPC_Exit:
 								{
-									gr.Player[event.PlayerId].Status = UPS_Exit
+									gr.Player[event.PlayerId].Status = PS_Exit
 									gr.sendSmsg(&ServerMsg{
-										PlayStatus: UPS_Exit,
-										PlayerId:   event.PlayerId,
+										Status:   PS_Exit,
+										PlayerId: event.PlayerId,
 									})
 								}
 							default:
 								{
 									gr.sendSmsg(&ServerMsg{
-										PlayStatus: UPS_Warning,
-										SendId:     event.PlayerId,
-										ErrStr:     protocol.NewErr(protocol.ErrPlayerCmdRejectCode).Error(),
+										Status: PS_Warning,
+										SendId: event.PlayerId,
+										ErrStr: protocol.NewErr(protocol.ErrPlayerCmdRejectCode).Error(),
 									})
 								}
 
@@ -633,7 +682,7 @@ func (gr *GameRoom) play() {
 					{
 						//超时就弃牌
 						logger.Debug("timeout")
-						curUser.Status = UPS_Lost
+						curUser.Status = PS_Lost
 						return nil
 					}
 
@@ -646,7 +695,7 @@ func (gr *GameRoom) play() {
 		}
 
 		//没有输或者退出 就放回牌桌
-		if curUser.Status < UPS_Lost {
+		if curUser.Status < PS_Lost {
 			gr.TablePlayer.PushBack(curUserId)
 		}
 
@@ -667,7 +716,7 @@ func joinUser(uid int64, conn *websocket.Conn) {
 			if err := conn.ReadJSON(req); err != nil {
 				logger.Warnning(err)
 			}
-			switch req.Cmd {
+			switch req.Type {
 			case protocol.UC_ErrCmd:
 				continue
 			case protocol.UC_SignCmd:
@@ -676,6 +725,8 @@ func joinUser(uid int64, conn *websocket.Conn) {
 				user.RecvChanMap[protocol.UC_RoomCmd] <- req.Data
 			case protocol.UC_PlayCmd:
 				user.RecvChanMap[protocol.UC_PlayCmd] <- req.Data
+			case protocol.UC_NotifyCmd:
+				user.RecvChanMap[protocol.UC_NotifyCmd]<-req.Data
 			}
 		}
 	}()
@@ -686,19 +737,24 @@ func joinUser(uid int64, conn *websocket.Conn) {
 			select {
 			case data := <-user.SendChanMap[protocol.UC_SignCmd]:
 				{
-					res.Cmd = protocol.UC_SignCmd
+					res.Type = protocol.UC_SignCmd
 					res.Data = data
 				}
 			case data := <-user.SendChanMap[protocol.UC_RoomCmd]:
 				{
-					res.Cmd = protocol.UC_RoomCmd
+					res.Type = protocol.UC_RoomCmd
 					res.Data = data
 				}
 			case data := <-user.SendChanMap[protocol.UC_PlayCmd]:
 				{
-					res.Cmd = protocol.UC_PlayCmd
+					res.Type = protocol.UC_PlayCmd
 					res.Data = data
 				}
+			case data:=<-user.SendChanMap[protocol.UC_NotifyCmd]:{
+				res.Type =protocol.UC_NotifyCmd
+				res.Data=data
+			}
+
 			}
 		}
 	}()
