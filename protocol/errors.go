@@ -38,6 +38,7 @@ var errMap = map[int]string{}
 func init() {
 	errMap[SuccessCode] = SuccessStr
 	errMap[ErrNotFoundUserCode] = ErrNotFoundUserStr
+	errMap[ErrRoomNotExistCode] = ErrRoomNotExistStr
 	errMap[ErrWrongPasswordCode] = ErrWrongPasswordStr
 	errMap[ErrPlayerUnknowStatusCode] = ErrPlayerUnknowStatusStr
 	errMap[ErrPlayerLosedCode] = ErrPlayerLosedStr
