@@ -328,8 +328,20 @@ type GameRoom struct {
 }
 
 func (gr *GameRoom) generalPlate(count int) []*plate.ThreePlate {
+	res:=[]*plate.ThreePlate{}
+	for i:=0;i<count;i++{
 
-	return []*plate.ThreePlate{}
+		tps:=plate.NewThreePlateSet()
+
+		tpi:=tps.Get()
+		if tp,ok:=tpi.(*plate.ThreePlate);ok{
+			res=append(res,tp)
+		}else{
+			logger.Error("general plate error")
+			return nil
+		}
+	}
+	return res
 }
 func (gr *GameRoom) sendSmsg(msg *ServerMsg) {
 	gr.ServerChan <- msg

@@ -1,16 +1,31 @@
 package plate
 
 import (
+	"math/rand"
 	"sort"
 )
 
 type Compare interface {
 	Less(interface{}) bool
 }
+type Generate interface {
+	Get()interface{}
+}
 
 type ThreePlateLevel int
 
 const (
+	// 梅花 100
+	// 方块 200
+	// 红心 300
+	// 黑桃 400
+	plate_max=54
+
+	plate_club = 100
+	plate_diamond=200
+	plate_heart=300
+	plate_spade=400
+
 	plate_Joker2 = 16
 	plate_Joker1 = 15
 	plate_A      = 14
@@ -27,12 +42,12 @@ const (
 	plate_3      = 3
 	plate_2      = 2
 
-	plate_Single     = 1
-	Value_Double     = 1000
-	Value_Order      = 100000
-	Value_Equal      = 1000000
-	Value_OrderEqual = 1000000000
-	Value_Three      = 10000000000
+	TP_Value_Single     = 1
+	TP_Value_Double     = 1000
+	TP_Value_Order      = 100000
+	TP_Value_Equal      = 1000000
+	TP_Value_OrderEqual = 1000000000
+	TP_Value_Three      = 10000000000
 
 	/*
 
@@ -44,15 +59,14 @@ const (
 		单排占用三位(三个不同的数字)
 
 	*/
-	Level_Single ThreePlateLevel = iota
-	Level_Double
-	Level_Order
-	Level_Equal
-	Level_OrderEqual
-	Level_Three
+	TP_Level_Single ThreePlateLevel = iota
+	TP_Level_Double
+	TP_Level_Order
+	TP_Level_Equal
+	TP_Level_OrderEqual
+	TP_Level_Three
 )
-
-func NewPlate(a, b, c int) *ThreePlate {
+func newThreePlate(a, b, c int) *ThreePlate {
 	res := &ThreePlate{
 		Plate: [3]int{a, b, c},
 	}
@@ -124,52 +138,78 @@ func (p *ThreePlate) hash() {
 
 	three := is_three()
 	if three > 0 {
-		p.Value = three * Value_Three
-		p.Level = Level_Three
+		p.Value = three * TP_Value_Three
+		p.Level = TP_Level_Three
 		return
 	}
 	order := is_order()
 	equal := is_equal()
 	if equal > 0 {
 		if order > 0 {
-			p.Value = order * Value_OrderEqual
-			p.Level = Level_OrderEqual
+			p.Value = order * TP_Value_OrderEqual
+			p.Level = TP_Level_OrderEqual
 
 			return
 		} else {
-			p.Value = equal * Value_Equal
-			p.Level = Level_Equal
+			p.Value = equal * TP_Value_Equal
+			p.Level = TP_Level_Equal
 			return
 		}
 	}
 	if order > 0 {
-		p.Value = order * Value_Order
-		p.Level = Level_Order
+		p.Value = order * TP_Value_Order
+		p.Level = TP_Level_Order
 		return
 	}
 	double := is_double()
 	if double > 0 {
-		p.Value = double * Value_Double
-		p.Level = Level_Double
+		p.Value = double * TP_Value_Double
+		p.Level = TP_Level_Double
 		return
 	}
 	p.Value = is_single()
-	p.Level = Level_Single
+	p.Level = TP_Level_Single
 	return
 }
 
 type ThreePlate struct {
 	Compare
 	Plate [3]int
-	// 梅花 2~A 102 ~ 114
-	// 方块 2~A 202 ~ 214
-	// 红心 2~A 302 ~ 314
-	// 黑桃 2~A 402 ~ 414
-	// Joker1 = 15
-	// Joker2 = 16
 	Level ThreePlateLevel
 	Value int
 }
+type ThreePlateSet struct {
+	Generate
+	Plates chan int
+}
+func (s *ThreePlateSet)Get()interface{}{
+	a:=<-s.Plates
+	b:=<-s.Plates
+	c:=<-s.Plates
+	tp:=newThreePlate(a,b,c)
+	return &tp
+}
+
+func NewThreePlateSet()*ThreePlateSet{
+	set:=ThreePlateSet{
+		Plates:make(chan int,plate_max),
+	}
+	plateList:=[]int{}
+
+	for i:=plate_club;i<=plate_spade;i+=100{
+		for j:=plate_2;j<=plate_A;j++{
+			plateList=append(plateList,i+j)
+		}
+	}
+
+	for i:=plate_max;i>0;i--{
+		index:=rand.Intn(i)
+		set.Plates<-plateList[index]
+		plateList=append(plateList[:index],plateList[index+1:]...)
+	}
+	return &set
+}
+
 
 func (p *ThreePlate) Less(v interface{}) bool {
 	other, ok := v.(*ThreePlate)
