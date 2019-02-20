@@ -7,6 +7,7 @@ import (
 	"cheat/orm"
 	"cheat/protocol"
 	"cheat/util"
+	"context"
 	"encoding/json"
 	"errors"
 	"github.com/gorilla/websocket"
@@ -39,21 +40,14 @@ func Test(conn *websocket.Conn) {
 
 }
 
+
 type UserManager struct {
 	sync.Map
-}
-func (m* UserManager)GetUser(uid int64)(ctx *UserContext,err error){
 
-
-	return ctx,nil
-}
-func (m*UserManager)AddUser(user *model.User)(ctx *UserContext,err error){
-
-	return ctx,nil
+	LogoutChan chan int64
 }
 
-
-var UserMap sync.Map
+var UserMap UserManager
 
 type UserContext struct {
 	Conn *websocket.Conn
@@ -61,7 +55,9 @@ type UserContext struct {
 	RecvChanMap map[protocol.EventType]chan []byte
 	SendChanMap map[protocol.EventType]chan []byte
 
+	Cancel context.CancelFunc
 	RoomId int64
+	Uid int64
 }
 
 var RoomManager sync.Map
@@ -112,7 +108,7 @@ func (u *UserContext) processRoomMsg(rcmd *protocol.RoomRequest) {
 			}
 			u.joinRoom(gr)
 		}
-	case protocol.RC_QuickJoin:
+	case protocol.RC_Rank:
 		{
 
 		}
@@ -154,18 +150,29 @@ func (u *UserContext) processPlayMsg(rcmd *protocol.PlayRequest) {
 
 }
 func (u *UserContext) processSignMsg(rcmd *protocol.SignRequest) {
+	switch rcmd.Type {
+	case protocol.SC_Login:{
 
+	}
+	case protocol.SC_Logout:{
+
+	}
+	default:{
+
+	}
+	}
 }
 func (u *UserContext) processChatMsg(rcmd *protocol.ChatRequest) {
 
 }
 
-func (u *UserContext) ProcessMsg() {
+func (u *UserContext) ProcessMsg(ctx context.Context) {
 
 	for {
 
 		select {
-
+		case <-ctx.Done():
+			return
 		case rmsg := <-u.RecvChanMap[protocol.UC_RoomCmd]:
 			{
 				rcmd := &protocol.RoomRequest{}
@@ -212,6 +219,70 @@ func (u *UserContext) ProcessMsg() {
 
 	}
 }
+
+func (u *UserContext) RecvMsg(ctx context.Context){
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		default:
+			{
+				req := &protocol.WsRequest{}
+				if err := u.Conn.ReadJSON(req); err != nil {
+					logger.Warnning(err)
+				}
+				req.Uid=u.Uid
+				switch req.Type {
+				case protocol.UC_ErrCmd:
+					continue
+				case protocol.UC_SignCmd:
+					u.RecvChanMap[protocol.UC_SignCmd] <- req.Data
+				case protocol.UC_RoomCmd:
+					u.RecvChanMap[protocol.UC_RoomCmd] <- req.Data
+				case protocol.UC_PlayCmd:
+					u.RecvChanMap[protocol.UC_PlayCmd] <- req.Data
+				case protocol.UC_NotifyCmd:
+					u.RecvChanMap[protocol.UC_NotifyCmd] <- req.Data
+				}
+			}
+	}
+	}
+}
+func (u *UserContext)SendMsg(ctx context.Context){
+	for {
+		res := &protocol.WsResponse{}
+		select {
+		case <-ctx.Done():
+			return
+		case data := <-u.SendChanMap[protocol.UC_ErrCmd]:
+			{
+				res.Type = protocol.UC_ErrCmd
+				res.Data = data
+			}
+		case data := <-u.SendChanMap[protocol.UC_SignCmd]:
+			{
+				res.Type = protocol.UC_SignCmd
+				res.Data = data
+			}
+		case data := <-u.SendChanMap[protocol.UC_RoomCmd]:
+			{
+				res.Type = protocol.UC_RoomCmd
+				res.Data = data
+			}
+		case data := <-u.SendChanMap[protocol.UC_PlayCmd]:
+			{
+				res.Type = protocol.UC_PlayCmd
+				res.Data = data
+			}
+		case data := <-u.SendChanMap[protocol.UC_NotifyCmd]:
+			{
+				res.Type = protocol.UC_NotifyCmd
+				res.Data = data
+			}
+		}
+	}
+}
+
 func (u *UserContext) SendPlayMsg(data []byte) {
 	u.SendChanMap[protocol.UC_PlayCmd] <- data
 }
@@ -327,21 +398,25 @@ type GameRoom struct {
 	RoomLock int32
 }
 
-func (gr *GameRoom) generalPlate(count int) []*plate.ThreePlate {
+func (gr *GameRoom) generalPlate(count int) ([]*plate.ThreePlate,error) {
 	res:=[]*plate.ThreePlate{}
 	for i:=0;i<count;i++{
 
 		tps:=plate.NewThreePlateSet()
 
 		tpi:=tps.Get()
+		if tpi==nil{
+			logger.Error("plate set is empty")
+			return nil,protocol.NewError("plate set is empty")
+		}
 		if tp,ok:=tpi.(*plate.ThreePlate);ok{
 			res=append(res,tp)
 		}else{
 			logger.Error("general plate error")
-			return nil
+			return nil,protocol.NewError("general plate error")
 		}
 	}
-	return res
+	return res,nil
 }
 func (gr *GameRoom) sendSmsg(msg *ServerMsg) {
 	gr.ServerChan <- msg
@@ -568,8 +643,11 @@ func (gr *GameRoom) play() {
 		}
 	}
 
-	plates := gr.generalPlate(gr.TablePlayer.Len())
-
+	plates,generr:= gr.generalPlate(gr.TablePlayer.Len())
+	if generr!=nil{
+		//致命错误
+		return
+	}
 	//发牌
 	for i := 0; i < gr.TablePlayer.Len(); i++ {
 		tmp := gr.TablePlayer.PopFront().(int64)
@@ -805,71 +883,54 @@ func (gr *GameRoom) play() {
 
 }
 
-var RoomCount = uint64(0)
-
-func joinUser(uid int64, conn *websocket.Conn) {
+func addUser(uid int64, conn *websocket.Conn) {
 	user := UserContext{
 		Conn: conn,
+		Uid:uid,
+		RecvChanMap: map[protocol.EventType]chan []byte{},
+		SendChanMap: map[protocol.EventType]chan []byte{},
 	}
-	go func() {
-		for {
-			req := &protocol.WsRequest{}
-			if err := conn.ReadJSON(req); err != nil {
-				logger.Warnning(err)
-			}
-			switch req.Type {
-			case protocol.UC_ErrCmd:
-				continue
-			case protocol.UC_SignCmd:
-				user.RecvChanMap[protocol.UC_SignCmd] <- req.Data
-			case protocol.UC_RoomCmd:
-				user.RecvChanMap[protocol.UC_RoomCmd] <- req.Data
-			case protocol.UC_PlayCmd:
-				user.RecvChanMap[protocol.UC_PlayCmd] <- req.Data
-			case protocol.UC_NotifyCmd:
-				user.RecvChanMap[protocol.UC_NotifyCmd] <- req.Data
-			}
-		}
-	}()
+	ctx, cancel := context.WithCancel(context.Background())
 
-	go func() {
-		for {
-			res := &protocol.WsResponse{}
-			select {
+	user.Cancel=cancel
+	user.RecvChanMap[protocol.UC_SignCmd]=make(chan []byte,1024)
+	user.RecvChanMap[protocol.UC_RoomCmd]=make(chan []byte,1024)
+	user.RecvChanMap[protocol.UC_PlayCmd]=make(chan []byte,1024)
+	user.RecvChanMap[protocol.UC_NotifyCmd]=make(chan []byte,1024)
 
-			case data := <-user.SendChanMap[protocol.UC_ErrCmd]:
-				{
-					res.Type = protocol.UC_ErrCmd
-					res.Data = data
-				}
-			case data := <-user.SendChanMap[protocol.UC_SignCmd]:
-				{
-					res.Type = protocol.UC_SignCmd
-					res.Data = data
-				}
-			case data := <-user.SendChanMap[protocol.UC_RoomCmd]:
-				{
-					res.Type = protocol.UC_RoomCmd
-					res.Data = data
-				}
-			case data := <-user.SendChanMap[protocol.UC_PlayCmd]:
-				{
-					res.Type = protocol.UC_PlayCmd
-					res.Data = data
-				}
-			case data := <-user.SendChanMap[protocol.UC_NotifyCmd]:
-				{
-					res.Type = protocol.UC_NotifyCmd
-					res.Data = data
-				}
+	user.SendChanMap[protocol.UC_ErrCmd]=make(chan []byte,1024)
+	user.SendChanMap[protocol.UC_SignCmd]=make(chan []byte,1024)
+	user.SendChanMap[protocol.UC_RoomCmd]=make(chan []byte,1024)
+	user.SendChanMap[protocol.UC_PlayCmd]=make(chan []byte,1024)
+	user.SendChanMap[protocol.UC_NotifyCmd]=make(chan []byte,1024)
 
-			}
-		}
-	}()
+	go user.ProcessMsg(ctx)
+	go user.RecvMsg(ctx)
+	go user.SendMsg(ctx)
 
 	UserMap.Store(uid, user)
+
+	timer:=time.NewTimer(time.Second*10)
+	for {
+		select {
+		case <-ctx.Done():
+			{
+				return
+			}
+		case t:=<-timer.C:
+			{
+				logger.Debug(t)
+			}
+		}
+	}
 }
-func exitUser(uid int64) {
+func delUser(uid int64) {
+	if uptr,exist:=UserMap.Load(uid);exist{
+		if user,ok:=uptr.(*UserContext);ok{
+			user.Cancel()
+			UserMap.Delete(uid)
+		}
+	}
 }
 func getUser(uid int64) (*UserContext, bool) {
 	v, exist := UserMap.Load(uid)
@@ -924,10 +985,8 @@ func Cheat3(conn *websocket.Conn) {
 		logger.Warnning(err)
 		return
 	}
-	joinUser(uid, conn)
-	defer exitUser(uid)
-
-	//main logic
+	addUser(uid, conn)
+	defer delUser(uid)
 }
 
 func play(room GameRoom) {

@@ -3,6 +3,7 @@ package plate
 import (
 	"math/rand"
 	"sort"
+	"time"
 )
 
 type Compare interface {
@@ -68,7 +69,7 @@ const (
 )
 func newThreePlate(a, b, c int) *ThreePlate {
 	res := &ThreePlate{
-		Plate: [3]int{a, b, c},
+		Plate: []int{a, b, c},
 	}
 	res.hash()
 	return res
@@ -174,7 +175,7 @@ func (p *ThreePlate) hash() {
 
 type ThreePlate struct {
 	Compare
-	Plate [3]int
+	Plate []int
 	Level ThreePlateLevel
 	Value int
 }
@@ -183,11 +184,14 @@ type ThreePlateSet struct {
 	Plates chan int
 }
 func (s *ThreePlateSet)Get()interface{}{
+	if len(s.Plates)<3 {
+		return nil
+	}
 	a:=<-s.Plates
 	b:=<-s.Plates
 	c:=<-s.Plates
 	tp:=newThreePlate(a,b,c)
-	return &tp
+	return tp
 }
 
 func NewThreePlateSet()*ThreePlateSet{
@@ -201,8 +205,8 @@ func NewThreePlateSet()*ThreePlateSet{
 			plateList=append(plateList,i+j)
 		}
 	}
-
-	for i:=plate_max;i>0;i--{
+	rand.Seed(time.Now().UnixNano())
+	for i:=plate_max-2;i>0;i--{
 		index:=rand.Intn(i)
 		set.Plates<-plateList[index]
 		plateList=append(plateList[:index],plateList[index+1:]...)

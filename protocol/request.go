@@ -48,7 +48,7 @@ const (
 	RC_Nil RoomCmd = iota
 	RC_Join
 	RC_Create
-	RC_QuickJoin
+	RC_Rank
 	RC_List
 	RC_Exit
 )
@@ -142,6 +142,7 @@ const (
 type WsRequest struct {
 	Type EventType
 	Data json.RawMessage
+	Uid int64
 }
 
 type WsResponse struct {

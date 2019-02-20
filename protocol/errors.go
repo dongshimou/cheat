@@ -60,6 +60,10 @@ func NewErrs(code int, args ...interface{}) *InnerError {
 	return &InnerError{Code: code, error: errors.New(util.ToString(args...))}
 }
 
+func NewError(args ...interface{})*InnerError{
+	return NewErrs(ErrUnDefineErrorCode,args...)
+}
+
 func (e *InnerError) Warp(code int, args ...interface{}) {
 	e.Code = code
 	e.error = errors.New(util.ToString(args...))
